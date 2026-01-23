@@ -1,4 +1,3 @@
-import os
 import shutil
 import patoolib
 from pathlib import Path
