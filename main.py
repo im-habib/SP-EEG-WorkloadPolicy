@@ -6,6 +6,7 @@ import os
 import time
 import subprocess
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
 import multiprocessing
 from datetime import datetime
@@ -20,13 +21,12 @@ from src.visualizer import WorkloadVisualizer
 
 # 1. THE TRAINING ENGINE (Background Process)
 def run_loso_pipeline(subjects, loader, fab, viz, model_dir, log_dir, shared_status, shared_step):
-    """
-    Executes Leave-One-Subject-Out training while updating shared memory for the UI.
-    """
-    TOTAL_STEPS_PER_SUB = 50000
+    TOTAL_STEPS_PER_SUB = 2000
+    os.makedirs("./results/", exist_ok=True)
+    results_file = "./results/loso_results.csv"
 
     for test_sid in subjects:
-        # Initialize status for this subject
+        # 1. INIT STATE
         shared_status[test_sid] = {
             "reward": "0.0", 
             "status": "⏳ TRAINING", 
@@ -39,7 +39,7 @@ def run_loso_pipeline(subjects, loader, fab, viz, model_dir, log_dir, shared_sta
             train_sids = [s for s in subjects if s != test_sid]
             x_train, y_train = loader.load_multiple_subjects(train_sids)
             
-            # Setup Env & Agent (Now passing shared memory to Agent)
+            # Setup Env & Agent
             env = WorkloadEnv(x_train, y_train, fab, penalty=-0.3)
             agent = WorkloadAgent(
                 env, 
@@ -49,19 +49,25 @@ def run_loso_pipeline(subjects, loader, fab, viz, model_dir, log_dir, shared_sta
                 shared_step=shared_step
             )
             
-            # Training with Dynamic Smart Break logic inside agent.train
+            # 2. TRAINING PHASE (Agent manages Smart Breaks internally)
             agent.train(steps=TOTAL_STEPS_PER_SUB)
 
-            # Post-Training: Extract Best Reward from Eval Logs
+            # 3. EXTRACTION PHASE (Pull best reward from logs)
             eval_path = os.path.join(model_dir, test_sid, "evaluations.npz")
+            best_reward_val = 0.0
             best_reward_str = "N/A"
             if os.path.exists(eval_path):
                 data = np.load(eval_path)
-                best_mean_reward = np.max(np.mean(data['results'], axis=1))
-                best_reward_str = f"{best_mean_reward:.1f}"
+                best_reward_val = np.max(np.mean(data['results'], axis=1))
+                best_reward_str = f"{best_reward_val:.1f}"
 
-            # Testing / Inference Phase
-            shared_status[test_sid] = {"reward": best_reward_str, "status": "🧪 TESTING", "current_step": TOTAL_STEPS_PER_SUB, "total_steps": TOTAL_STEPS_PER_SUB}
+            # 4. TESTING / INFERENCE PHASE (Switching UI Status)
+            shared_status[test_sid] = {
+                "reward": best_reward_str, 
+                "status": "🧪 TESTING", 
+                "current_step": TOTAL_STEPS_PER_SUB, 
+                "total_steps": TOTAL_STEPS_PER_SUB
+            }
             
             x_test, y_test = loader.load_subject(test_sid)
             test_env = WorkloadEnv(x_test, y_test, fab)
@@ -74,8 +80,17 @@ def run_loso_pipeline(subjects, loader, fab, viz, model_dir, log_dir, shared_sta
                 y_true.append(info['truth'])
                 y_pred.append(action)
 
-            # Final subject status update
+            # 5. FINALIZATION PHASE (Metrics & CSV)
             acc = (np.array(y_true) == np.array(y_pred)).mean()
+            stability = viz.calculate_stability_metrics(y_pred)
+
+            # --- CRITICAL: Save to CSV for the Ensemble App ---
+            new_row = pd.DataFrame([{"Subject": test_sid, "Accuracy": acc, "Stability": stability}])
+            new_row.to_csv(results_file, mode='a', header=not os.path.exists(results_file), index=False)
+
+            # --- CRITICAL: Generate temporal plot for this subject ---
+            viz.plot_results(y_true, y_pred, test_sid)
+
             shared_status[test_sid] = {
                 "reward": f"{acc*100:.1f}% Acc", 
                 "status": "✅ COMPLETE",
@@ -160,11 +175,27 @@ if __name__ == "__main__":
         target=run_loso_pipeline, 
         args=(subjects, loader, fab, viz, model_dir, log_dir, shared_status, shared_step)
     )
+
     train_proc.start()
 
     # Launch Monitor UI
     try:
         monitor_table(subjects, shared_status, shared_step, TOTAL_STEPS, start_time)
+        # --- NEW: Wait for training to actually finish ---
+        train_proc.join() 
+        
+        print("\n📊 Generating Global Research Visualizations...")
+        # 1. Heatmap of all subjects' learning curves
+        viz.plot_master_training_heatmap(model_dir)
+        
+        # 2. Performance matrix (Accuracy/Stability) from the CSV we just built
+        viz.plot_final_results_heatmap("./results/loso_results.csv")
+        
+        # 3. Significance test (T-Test vs 33% chance)
+        # Note: You can pull these from the CSV you just saved
+        df = pd.read_csv("./results/loso_results.csv")
+        viz.plot_significance_test(df["Accuracy"].values)
+        
     except KeyboardInterrupt:
         print("\n🛑 Research Halted by User.")
     finally:

@@ -26,6 +26,7 @@ class EEGHardware:
         
         time.sleep(self.chunk_size / self.sfreq)
         return data
+    
 if __name__ == "__main__":
     hw = EEGHardware()
     print(f"🚀 Streaming {hw.chunk_size} samples of high-noise data...")

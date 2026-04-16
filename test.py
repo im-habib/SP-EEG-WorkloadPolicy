@@ -1,4 +1,4 @@
-import sys, time, select
+import time
 from app import AppInterfaceManager
 from EEGHardware import EEGHardware
 from collections import deque, Counter
@@ -9,53 +9,102 @@ manager = AppInterfaceManager(threshold=0.98)
 hardware = EEGHardware(channels=4, sfreq=250, chunk_size=100)
 
 def live_test():
-    print("🚀 SYSTEM ONLINE | ENSEMBLE ACTIVE")
+    print("🚀 SYSTEM ONLINE | ENSEMBLE ACTIVE (CALIBRATED)")
     
     start_time = time.time()
     last_print_time = 0
-    # Stability Buffer: Stores the last 5 decisions to smooth the output
     decision_history = deque(maxlen=5) 
 
     try:
         while True:
-            # 1. Non-blocking Keyboard Input
-            if select.select([sys.stdin], [], [], 0)[0]:
-                line = sys.stdin.readline().strip()
-                if line == '1': hardware.set_workload("low")
-                elif line == '3': hardware.set_workload("high")
-
-            # 2. Continuous Data Ingestion
+            # 1. Continuous Data Ingestion
             new_data = hardware.pull_latest_data()
-            manager.update_buffer(new_data) # Manager pushes to a 500-sample buffer
+            manager.update_buffer(new_data) 
             
-            # 3. Prediction
-            result = manager.predict()
+            # 2. Calibrated Prediction
+            # temperature=0.6 sharpens the consensus
+            result = manager.predict(rejection_threshold=0.45, temperature=0.6)
             
             if result["status"] == "success":
                 decision_history.append(result['workload_level'])
                 
-                # 4. Logical Reporting (Every 2 Seconds)
+                # 3. Reporting (Every 2 Seconds)
                 if (time.time() - last_print_time) >= 2.0:
-                    # Calculate Smoothed Decision
                     counts = Counter(decision_history)
                     smoothed_id = counts.most_common(1)[0][0]
-                    labels = ["Low", "Medium", "High"]
                     
-                    # Final Confidence = Ensemble Agreement * Temporal Stability
-                    stability_factor = counts[smoothed_id] / len(decision_history)
-                    final_conf = result['confidence'] * stability_factor
+                    # Probability Distribution breakdown
+                    p = result["probs"]
+                    prob_bar = f"L:{p[0]:.2f} M:{p[1]:.2f} H:{p[2]:.2f}"
+                    
+                    # Logic for visual feedback
+                    if result['is_uncertain']:
+                        color, label = "⚪", "UNCERTAIN"
+                    else:
+                        color = "🔴" if smoothed_id == 2 else "🟢"
+                        label = result['label'].upper()
                     
                     v = result["vote_map"]
-                    map_str = f"L: {v['Low']:02d} | M: {v['Medium']:02d} | H: {v['High']:02d}"
-                    color = "🔴" if smoothed_id == 2 else "🟢"
+                    map_str = f"L:{v['Low']} M:{v['Medium']} H:{v['High']}"
                     
-                    print(f"{color} [{time.time()-start_time:4.1f}s] {labels[smoothed_id]:6} | "
-                          f"System Conf: {final_conf:>5.1%} | [{map_str}]")
+                    # Print line with Calibrated Confidence and Distribution
+                    print(f"{color} [{time.time()-start_time:4.1f}s] {label:9} | "
+                          f"Calib Conf: {result['confidence']:>5.1%} | "
+                          f"[{prob_bar}] | Votes: [{map_str}]")
                     
                     last_print_time = time.time()
 
     except KeyboardInterrupt:
         print("\n🛑 System Halted.")
+
+# def live_test():
+#     print("🚀 SYSTEM ONLINE | ENSEMBLE ACTIVE")
+    
+#     start_time = time.time()
+#     last_print_time = 0
+#     # Stability Buffer: Stores the last 5 decisions to smooth the output
+#     decision_history = deque(maxlen=5) 
+
+#     try:
+#         while True:
+#             # 1. Non-blocking Keyboard Input
+#             if select.select([sys.stdin], [], [], 0)[0]:
+#                 line = sys.stdin.readline().strip()
+#                 if line == '1': hardware.set_workload("low")
+#                 elif line == '3': hardware.set_workload("high")
+
+#             # 2. Continuous Data Ingestion
+#             new_data = hardware.pull_latest_data()
+#             manager.update_buffer(new_data) # Manager pushes to a 500-sample buffer
+            
+#             # 3. Prediction
+#             result = manager.predict()
+            
+#             if result["status"] == "success":
+#                 decision_history.append(result['workload_level'])
+                
+#                 # 4. Logical Reporting (Every 2 Seconds)
+#                 if (time.time() - last_print_time) >= 2.0:
+#                     # Calculate Smoothed Decision
+#                     counts = Counter(decision_history)
+#                     smoothed_id = counts.most_common(1)[0][0]
+#                     labels = ["Low", "Medium", "High"]
+                    
+#                     # Final Confidence = Ensemble Agreement * Temporal Stability
+#                     stability_factor = counts[smoothed_id] / len(decision_history)
+#                     final_conf = result['confidence'] * stability_factor
+                    
+#                     v = result["vote_map"]
+#                     map_str = f"L: {v['Low']:02d} | M: {v['Medium']:02d} | H: {v['High']:02d}"
+#                     color = "🔴" if smoothed_id == 2 else "🟢"
+                    
+#                     print(f"{color} [{time.time()-start_time:4.1f}s] {labels[smoothed_id]:6} | "
+#                           f"System Conf: {final_conf:>5.1%} | [{map_str}]")
+                    
+#                     last_print_time = time.time()
+
+#     except KeyboardInterrupt:
+#         print("\n🛑 System Halted.")
 
 if __name__ == "__main__":
     live_test()
@@ -93,5 +142,5 @@ if __name__ == "__main__":
 #     except KeyboardInterrupt:
 #         print("\n🛑 System Shutdown.")
 
-if __name__ == "__main__":
-    live_test()
+# if __name__ == "__main__":
+#     live_test()

@@ -17,7 +17,7 @@ class StatusUpdateCallback(BaseCallback):
 
     def _on_step(self) -> bool:
         self.shared_step.value += 1
-        
+        # print(f"Step {self.n_calls}")
         # Update shared status every 512 steps for the table
         if self.n_calls % 512 == 0:
             mean_rew = 0.0
@@ -66,13 +66,22 @@ class WorkloadAgent:
         self.venv = DummyVecEnv([lambda: monitored_env])
         self.env = VecNormalize(self.venv, norm_obs=True, norm_reward=True)
 
+        # Reactivate these for tuning!
+        self.hyperparams = {
+            "learning_rate": 3e-4,
+            "n_steps": 256,
+            "batch_size": 64,
+            "n_epochs": 10,
+            "gamma": 0.99,
+            "ent_coef": 0.05,
+        }
+
         self.model = PPO(
             "MlpPolicy",
             self.env,
             verbose=0,
             tensorboard_log=log_dir,
-            learning_rate=3e-4,
-            n_steps=512, 
+            **self.hyperparams,
             policy_kwargs={
                 "net_arch": [64, 64], 
                 "activation_fn": th.nn.Tanh
@@ -101,7 +110,7 @@ class WorkloadAgent:
         # 2. PLATEAU DETECTION: Stop if the model gets "stuck".
         # We lower patience to 3 evals (3 * 1024 steps) to be more aggressive.
         plateau_break = StopTrainingOnNoModelImprovement(
-            max_no_improvement_evals=3, 
+            max_no_improvement_evals=5, 
             min_evals=5, 
             verbose=1
         )
@@ -124,10 +133,11 @@ class WorkloadAgent:
             callback=callbacks,
             tb_log_name=self.subject_id 
         )
+
     def predict(self, obs):
         norm_obs = self.env.normalize_obs(obs)
         return self.model.predict(norm_obs, deterministic=True)
-    
+
 # import os
 # from stable_baselines3 import PPO
 # from stable_baselines3.common.monitor import Monitor
