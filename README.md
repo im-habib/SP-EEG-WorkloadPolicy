@@ -75,3 +75,10 @@ If you find this work useful, please cite our EMBC 2026 paper:
 }
 
 ```
+
+```
+I Worked based on this paper
+title: CL-Drive (Multimodal Brain-Computer Interface for In-Vehicle Driver Cognitive Load Measurement: Dataset and Baselines)
+Pub URL: https://borealisdata.ca/dataset.xhtml?persistentId=doi:10.5683/SP3/JJ2YZZ
+Paper Folder: /paper/2304.04273v2.pdf
+```
