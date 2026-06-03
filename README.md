@@ -1,6 +1,6 @@
 # SP-EEG-WorkloadPolicy
 
-Official implementation of the paper: **"An Adaptive Policy-Based Framework for Driver Workload Sparse EEG Classification"** (Submitted to EMBC 2026).
+Official implementation of the paper: **"An Adaptive Policy-Based Framework for Driver Workload Sparse EEG Classification"** (Will Submit soon).
 
 This repository contains an end-to-end Deep Reinforcement Learning (DRL) pipeline to classify cognitive workload levels from sparse 4-channel EEG data (Muse S) using the **CL-Drive** dataset.
 
