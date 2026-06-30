@@ -1,6 +1,6 @@
 # SP-EEG-WorkloadPolicy
 
-Official implementation of the paper: **"An Adaptive Policy-Based Framework for Driver Workload Sparse EEG Classification"** (Submitted to EMBC 2026).
+Official implementation of the paper: **"An Adaptive Policy-Based Framework for Driver Workload Sparse EEG Classification"** (Will Submit soon).
 
 ## Why This Project?
 
